@@ -1,0 +1,43 @@
+# Entorno virtual
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Variables de entorno
+.env
+
+# MLflow local
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Logs de ejecución local
+*.log
+
+# Modelos y artefactos generados
+models/
+reports/figures/*
+reports/metrics/*
+data/processed/*
+data/monitoring/*
+
+# Mantener las carpetas versionadas
+!reports/figures/.gitkeep
+!reports/metrics/.gitkeep
+!data/processed/.gitkeep
+!data/monitoring/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
