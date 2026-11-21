@@ -269,7 +269,8 @@ Revisa siempre `reports/metrics/segment_summary.csv` para asignar los nombres se
 | `/predict` responde 503 | El modelo no se cargó: verifica MLflow y ejecuta `python -m src.register_model` |
 | Prometheus no ve la API | La API debe correr en el puerto 8000 del host y Prometheus tener `host.docker.internal` resuelto |
 | `docker compose` falla con `dockerDesktopLinuxEngine` | Abre Docker Desktop y espera a que el motor esté en ejecución |
-| Grafana sin datos | Espera ~10 s (scrape cada 5 s) y genera predicciones |
+| Grafana sin datos | Espera ~15 s (scrape cada 15 s) y genera predicciones |
+| El primer arranque de Grafana tarda varios minutos | Es normal en el primer inicio: registra sus plugins. Verifica `http://localhost:3000/api/health` hasta que responda `database: ok` |
 | Streamlit no conecta | Revisa que FastAPI esté en `http://127.0.0.1:8000` o ajusta `API_URL` |
 
 ## Nota sobre las métricas del clasificador
