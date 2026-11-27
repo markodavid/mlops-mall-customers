@@ -2,20 +2,56 @@
 
 [![CI](https://github.com/markodavid/mlops-mall-customers/actions/workflows/ci.yml/badge.svg)](https://github.com/markodavid/mlops-mall-customers/actions/workflows/ci.yml)
 
+- **Curso:** Gestión de Proyectos en IA y CD — Universidad Autónoma de Occidente (UAO)
+- **Profesor:** Juan Manuel Núñez Velasco PhD
+- **Estudiantes:** Marko David García · Alejandro Meneses · Henry Rosenstihel
+
 Proyecto MLOps de extremo a extremo: segmentación de clientes con **KMeans**, entrenamiento de clasificadores con **scikit-learn**, tracking y registro de modelos con **MLflow**, API con **FastAPI**, frontend con **Streamlit** y monitoreo con **Prometheus + Grafana**.
 
 Basado en el tutorial *"Cómo construir un proyecto MLOps completo con Python, MLflow, FastAPI, Streamlit y Grafana"* de Juan Manuel Núñez Velasco, con ajustes de robustez (MLflow 3.x, ejecución headless en CI, API tolerante a fallos de MLflow y dashboard de Grafana aprovisionado automáticamente).
 
 ---
 
-## Arquitectura
+## ¿Qué hace el proyecto?
+
+El dataset **Mall Customers** describe a 200 clientes de un centro comercial con cuatro variables: género, edad, ingreso anual (en miles de dólares) y *spending score* (una medida de comportamiento de compra de 1 a 100). El proyecto resuelve dos problemas conectados:
+
+1. **Segmentación no supervisada:** descubre grupos naturales de clientes con **KMeans** (4 segmentos) y los visualiza en 2D con **PCA**. Como el dataset no trae etiquetas de negocio, los segmentos se construyen a partir del comportamiento observado.
+2. **Clasificación supervisada:** usa los segmentos asignados por KMeans como etiqueta y entrena tres clasificadores (**regresión logística**, **random forest** y **gradient boosting**) para predecir el segmento de un cliente nuevo a partir de sus cuatro variables.
+
+Alrededor del modelo se implementa el ciclo MLOps completo:
+
+- **Tracking y registro:** cada entrenamiento queda en MLflow con métricas, matriz de confusión, reporte de clasificación y el modelo serializado; el mejor run por F1 se registra con el alias `champion`.
+- **Servicio:** FastAPI carga ese modelo `champion` al iniciar y expone `/predict`, `/health` y `/metrics`. Si MLflow no está disponible, la API sigue viva y responde `503` en `/predict` con un mensaje claro.
+- **Interfaz:** Streamlit permite ingresar los datos de un cliente y ver el segmento predicho sin escribir código.
+- **Observabilidad:** Prometheus raspa las métricas de la API, Grafana muestra un dashboard aprovisionado y cada predicción se agrega a un CSV de monitoreo.
+- **Calidad:** GitHub Actions compila el código, ejecuta el pipeline de datos y clustering, y corre la suite de pruebas en cada push o pull request.
+
+### Flujo online
 
 ```
-Cliente → Streamlit (8501) → FastAPI (8000) → MLflow Model Registry (5000)
-                                   │
-                                   ├→ /metrics (Prometheus) → Grafana (3000)
-                                   └→ data/monitoring/api_predictions_log.csv
+Analista → Streamlit → POST /predict → FastAPI → modelo champion (MLflow) → segmento
+                                              ├→ métricas Prometheus
+                                              └→ data/monitoring/api_predictions_log.csv
 ```
+
+### Flujo offline (entrenamiento)
+
+```
+Mall_Customers.csv → limpieza → KMeans (4 segmentos) → dataset segmentado
+                                                          ↓
+                                  3 clasificadores sklearn → MLflow (runs)
+                                                          ↓
+                                   mejor F1 → Model Registry → alias champion
+```
+
+---
+
+## Arquitectura
+
+![Arquitectura MLOps de Mall Customers](docs/architecture/mall-customers-architecture.svg)
+
+Diagrama generado con [Archify](https://github.com/tt-a1i/archify) a partir del código del repositorio (commit `f82e1e9`). Muestra el flujo online (Streamlit → FastAPI → MLflow), el flujo offline de entrenamiento y el monitoreo con Prometheus y Grafana.
 
 | Componente | Puerto | Descripción |
 |---|---|---|
@@ -24,6 +60,44 @@ Cliente → Streamlit (8501) → FastAPI (8000) → MLflow Model Registry (5000)
 | Streamlit | 8501 | Interfaz para probar el modelo |
 | Prometheus | 9090 | Recolección de métricas |
 | Grafana | 3000 | Dashboards de monitoreo |
+
+> MLflow corre por defecto en el host (`mlflow server`); también puede levantarse en Docker con `docker compose --profile mlflow up -d`. Prometheus y Grafana viven en Docker Compose.
+
+---
+
+## Capturas de pantalla
+
+### Predicción desde Streamlit
+
+Formulario con los datos del cliente y respuesta de la API con el segmento asignado.
+
+![Streamlit prediciendo un segmento](docs/screenshots/streamlit.png)
+
+### API documentada con Swagger
+
+Endpoints disponibles en `http://127.0.0.1:8000/docs`.
+
+![Swagger UI de FastAPI](docs/screenshots/swagger.png)
+
+### Experimentos y runs en MLflow
+
+Los tres clasificadores registrados con sus métricas y artefactos.
+
+![Experimentos en MLflow](docs/screenshots/mlflow.png)
+
+### Dashboard de monitoreo en Grafana
+
+Predicciones totales, throughput, latencia p95/promedio y predicciones por segmento.
+
+![Dashboard de Grafana](docs/screenshots/grafana.png)
+
+### Métricas en Prometheus
+
+Consulta de `mall_customer_prediction_count_total` alimentada por la API.
+
+![Consulta en Prometheus](docs/screenshots/prometheus.png)
+
+---
 
 ## Estructura
 
@@ -40,6 +114,9 @@ mlops-mall-customers/
 ├── docker/
 │   ├── prometheus.yml
 │   └── grafana/                 # Provisioning + dashboard listo
+├── docs/
+│   ├── architecture/            # Diagrama de arquitectura (SVG)
+│   └── screenshots/             # Capturas de la aplicación y el monitoreo
 ├── reports/
 │   ├── figures/                 # Gráficas y matrices de confusión
 │   └── metrics/                 # Reportes y resumen de segmentos
@@ -57,6 +134,8 @@ mlops-mall-customers/
 ├── requirements.txt
 └── README.md
 ```
+
+---
 
 ## Requisitos
 

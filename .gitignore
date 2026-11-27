@@ -41,3 +41,6 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Artefactos de trabajo de Archify (el diagrama final vive en docs/)
+.archify/
