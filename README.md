@@ -1,5 +1,7 @@
 # MLOps Mall Customers 🛍️
 
+[![CI](https://github.com/markodavid/mlops-mall-customers/actions/workflows/ci.yml/badge.svg)](https://github.com/markodavid/mlops-mall-customers/actions/workflows/ci.yml)
+
 Proyecto MLOps de extremo a extremo: segmentación de clientes con **KMeans**, entrenamiento de clasificadores con **scikit-learn**, tracking y registro de modelos con **MLflow**, API con **FastAPI**, frontend con **Streamlit** y monitoreo con **Prometheus + Grafana**.
 
 Basado en el tutorial *"Cómo construir un proyecto MLOps completo con Python, MLflow, FastAPI, Streamlit y Grafana"* de Juan Manuel Núñez Velasco, con ajustes de robustez (MLflow 3.x, ejecución headless en CI, API tolerante a fallos de MLflow y dashboard de Grafana aprovisionado automáticamente).
@@ -241,7 +243,7 @@ git init
 git add .
 git commit -m "feat: proyecto MLOps completo con MLflow, FastAPI, Streamlit y Grafana"
 git branch -M main
-git remote add origin https://github.com/TU_USUARIO/mlops-mall-customers.git
+git remote add origin https://github.com/markodavid/mlops-mall-customers.git
 git push -u origin main
 ```
 
