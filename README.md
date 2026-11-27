@@ -65,6 +65,57 @@ Diagrama generado con [Archify](https://github.com/tt-a1i/archify) a partir del 
 
 ---
 
+## Componentes del proyecto
+
+El repositorio se organiza en cinco capas: **datos**, **modelado**, **servicio**, **monitoreo** y **calidad**. Cada archivo tiene una responsabilidad concreta y se apoya en los anteriores.
+
+### Datos y features
+
+- **`src/config.py`** — Fuente única de configuración. Carga el `.env` con `python-dotenv`, resuelve rutas absolutas (`data/`, `reports/`, `models/`) y centraliza parámetros como `RANDOM_STATE=42`, `TEST_SIZE=0.2` y `N_CLUSTERS=4`. También expone `MLFLOW_TRACKING_URI`, `EXPERIMENT_NAME`, `REGISTERED_MODEL_NAME`, `MODEL_ALIAS`, `API_URL` y `LOAD_MODEL_ON_STARTUP`. Fuerza UTF-8 en stdout/stderr para evitar errores de codificación en Windows.
+- **`src/data.py`** — Extracción y transformación. `load_raw_data()` lee `data/raw/Mall_Customers.csv` y falla con un mensaje claro si no existe. `clean_column_names()` normaliza los encabezados (minúsculas, espacios a `_`, sin paréntesis). `preprocess_data()` elimina `customerid`, valida las cuatro columnas esperadas, codifica `gender` (Male=1, Female=0), elimina duplicados, convierte a `int64` y guarda `data/processed/mall_customers_processed.csv`.
+- **`src/features.py`** — Define `FEATURE_COLUMNS`, el orden exacto que espera el modelo (`gender`, `age`, `annual_income_k$`, `spending_score_1_100`). Ese orden se reutiliza al entrenar, al predecir localmente y en la API, evitando desalineaciones entre entrenamiento y servicio. `get_features()` selecciona las columnas y `scale_features()` aplica `StandardScaler`.
+
+### Modelado
+
+- **`src/clustering.py`** — Segmentación no supervisada. Evalúa KMeans para `k=2..8` con inercia (método del codo) y silhouette, guarda ambas gráficas y entrena el modelo final con `k=4`. Añade la columna `customer_segment`, calcula una proyección 2D con PCA para visualizar los grupos y genera `segment_summary.csv`, el dataset segmentado y el scaler `models/clustering_scaler.joblib`.
+- **`src/train.py`** — Entrenamiento supervisado. Carga el dataset segmentado, separa features y etiqueta (`customer_segment`) y hace un split 80/20 estratificado. Para cada modelo construye un `Pipeline` con `StandardScaler` y clasificador, entrena y calcula accuracy, precision, recall y F1 ponderados. Registra en MLflow los parámetros, las métricas, el reporte de clasificación, la matriz de confusión y el modelo serializado. Los tres algoritmos son regresión logística, random forest y gradient boosting; al final guarda `model_comparison.csv` con el ranking por F1.
+- **`src/register_model.py`** — Registro del campeón. Busca el experimento en MLflow, ordena los runs por `metrics.f1 DESC`, toma el mejor, lo registra en el Model Registry y le asigna el alias `champion`. También etiqueta la versión con `source_run_id` para conservar la trazabilidad hacia el run original.
+- **`src/predict.py`** — Prueba local del modelo registrado. Carga `models:/<nombre>@champion` con `mlflow.pyfunc.load_model` y predice un cliente de ejemplo. Sirve para validar el registro sin levantar la API.
+
+### Servicio e interfaz
+
+- **`api/main.py`** — API REST con FastAPI. Al iniciar (`lifespan`) intenta cargar el modelo `champion` desde MLflow; si falla, la API sigue viva y responde `503` en `/predict` con un mensaje claro. Expone `/` (mensaje de estado), `/health` (estado y `model_loaded`), `/predict` (valida género, edad, ingreso y spending score; codifica el género; arma el DataFrame en el orden de `FEATURE_COLUMNS`; predice; mide latencia) y `/metrics` (formato Prometheus). Cada predicción incrementa `mall_customer_prediction_count`, observa `mall_customer_prediction_latency_seconds`, etiqueta `mall_customer_segment_predictions_total{segment}` y se agrega a `data/monitoring/api_predictions_log.csv`.
+- **`app/streamlit_app.py`** — Interfaz de usuario. Presenta un formulario con género, edad (18-80), ingreso anual (10-150) y spending score (1-100), envía un `POST` a `${API_URL}/predict` con timeout de 10 s y muestra el segmento, la latencia y el JSON de respuesta. También maneja errores de conexión, timeout y respuestas no JSON.
+
+### Monitoreo
+
+- **`docker/prometheus.yml`** — Configuración de recolección. Define el job `mall-customers-api`, la ruta `/metrics` y el target `host.docker.internal:8000`, con scrape cada 15 s y timeout de 10 s para tolerar la latencia del host.
+- **`docker/grafana/provisioning/`** — Aprovisionamiento automático. `datasources/prometheus.yml` registra Prometheus como datasource por defecto (UID `prometheus`, URL `http://prometheus:9090`); `dashboards/dashboards.yml` carga los dashboards desde archivo en la carpeta **MLOps** y refresca cada 10 s.
+- **`docker/grafana/dashboards/mall-customers.json`** — Dashboard **Mall Customers - MLOps** con cuatro paneles: predicciones totales, throughput (`rate(...[1m])`), latencia p95/promedio y predicciones por segmento.
+- **`docker-compose.yml`** — Orquesta Prometheus (9090) y Grafana (3000) con sus volúmenes y archivos de configuración montados en solo lectura. Incluye el perfil opcional `mlflow` (5000) para ejecutar MLflow en Docker y `extra_hosts` para resolver `host.docker.internal` también en Linux.
+
+### Calidad y automatización
+
+- **`tests/`** — Suite de pytest. Los tests de la API usan `TestClient` y un modelo falso, por lo que validan `/health`, `/predict`, las reglas de validación, el `503` sin modelo y `/metrics` sin necesitar MLflow; los tests de datos cubren el preprocesamiento y las columnas esperadas.
+- **`.github/workflows/ci.yml`** — Integración continua en GitHub Actions. En cada push a `main`/`develop` y en PRs a `main` instala dependencias con Python 3.11, verifica que `src`, `api` y `app` compilen, ejecuta `python -m src.data`, `python -m src.clustering` y `pytest -q`.
+- **`requirements.txt`** — Dependencias fijadas por rango. Mantiene `mlflow<3` y `sqlalchemy<2.1` para evitar incompatibilidades del backend SQLite de MLflow 2.x.
+- **`.env.example`** — Plantilla de variables de entorno (tracking URI, nombres de experimento y modelo, alias, URL de la API y carga del modelo al iniciar). El `.env` real no se versiona.
+- **`pytest.ini`** — Configuración de pytest con `pythonpath` para importar `src` y `api` desde la raíz del repositorio.
+
+### Artefactos generados
+
+Estos directorios se crean al ejecutar el pipeline y están ignorados por Git (salvo los `.gitkeep` y el CSV original):
+
+- `data/processed/` — datasets limpio y segmentado.
+- `data/monitoring/` — log CSV de predicciones de la API.
+- `models/` — scaler del clustering.
+- `reports/figures/` — codo, silhouette, PCA y matrices de confusión.
+- `reports/metrics/` — resumen de segmentos, reportes de clasificación y comparación de modelos.
+
+El único dato versionado a propósito es `data/raw/Mall_Customers.csv`, porque la CI lo necesita para ejecutar el pipeline.
+
+---
+
 ## Capturas de pantalla
 
 ### Predicción desde Streamlit
